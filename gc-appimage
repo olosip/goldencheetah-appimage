@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# gc-appimage: installa e aggiorna l'AppImage ufficiale di GoldenCheetah su Fedora,
+# con il collegamento nel menu di GNOME e l'icona giusta anche nella dash.
+# Il pacchetto GoldenCheetah di Fedora è compilato senza la chiave Strava: l'AppImage ufficiale ce l'ha.
+set -euo pipefail
+
+VERSION="0.1.0"
+REPO_API="https://api.github.com/repos/GoldenCheetah/GoldenCheetah/releases"
+APP_DIR="${GC_DIR:-$HOME/Applications}"
+# Nome fisso: GNOME riconosce la finestra dal nome del file (WM_CLASS), così l'icona
+# nella dash resta corretta anche dopo gli aggiornamenti
+APP_FILE="$APP_DIR/GoldenCheetah.AppImage"
+WM_CLASS="GoldenCheetah.AppImage"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+DESKTOP_DIR="$DATA_HOME/applications"
+DESKTOP_FILE="$DESKTOP_DIR/goldencheetah.desktop"
+ICON_FILE="$DATA_HOME/icons/goldencheetah.png"
+
+msg() { printf '%s\n' "$*"; }
+die() { printf 'Errore: %s\n' "$*" >&2; exit 1; }
+
+ask() {
+    # ask "domanda" -> 0 se l'utente risponde sì; con ASSUME_YES=1 risponde sì da solo
+    [[ "${ASSUME_YES:-0}" == 1 ]] && return 0
+    local reply
+    read -r -p "$1 [s/N] " reply || return 1
+    [[ "$reply" =~ ^[sSyY] ]]
+}
+
+have_fuse2() {
+    # Le AppImage di GoldenCheetah usano FUSE 2 (pacchetto fuse-libs)
+    ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2' || [[ -e /usr/lib64/libfuse.so.2 ]]
+}
+
+warn_rpm() {
+    if rpm -q GoldenCheetah >/dev/null 2>&1; then
+        msg "Attenzione: è installato anche il pacchetto Fedora GoldenCheetah, che non può collegarsi a Strava."
+        msg "Per non aprirlo per sbaglio: sudo dnf remove GoldenCheetah   (i dati in ~/.goldencheetah restano)"
+    fi
+}
+
+release_info() {
+    # release_info [tag] -> stampa: tag, url, dimensione, sha256 dell'AppImage x64
+    local url="$REPO_API/latest"
+    [[ -n "${1:-}" ]] && url="$REPO_API/tags/$1"
+    curl -fsSL "$url" | python3 -I -c '
+import json, sys
+r = json.load(sys.stdin)
+for a in r.get("assets", []):
+    if a["name"].endswith("_x64.AppImage"):
+        digest = (a.get("digest") or "").removeprefix("sha256:")
+        print(r["tag_name"], a["browser_download_url"], a["size"], digest)
+        break
+else:
+    sys.exit("nessuna AppImage x64 in questa release")
+'
+}
+
+installed_version() {
+    [[ -f "$DESKTOP_FILE" ]] || return 0
+    sed -n 's/^X-AppImage-Version=//p' "$DESKTOP_FILE"
+}
+
+install_icon() {
+    # Estrae l'icona dall'AppImage stessa
+    local tmp root icon
+    tmp="$(mktemp -d)"
+    (cd "$tmp" && "$APP_FILE" --appimage-extract >/dev/null 2>&1) || true
+    root="$tmp/squashfs-root"
+    icon="$(sed -n 's/^Icon=//p' "$root"/*.desktop 2>/dev/null | head -n1)"
+    mkdir -p "$(dirname "$ICON_FILE")"
+    if [[ -n "$icon" && -f "$root/$icon.png" ]]; then
+        cp "$root/$icon.png" "$ICON_FILE"
+    elif [[ -f "$root/.DirIcon" ]]; then
+        cp -L "$root/.DirIcon" "$ICON_FILE"
+    else
+        msg "Attenzione: icona non trovata nell'AppImage."
+    fi
+    rm -rf "$tmp"
+}
+
+write_desktop() {
+    local tag="$1"
+    mkdir -p "$DESKTOP_DIR"
+    cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GoldenCheetah
+Comment=Analisi di allenamenti e potenza per ciclismo, corsa e nuoto
+Exec="$APP_FILE"
+Icon=$ICON_FILE
+Categories=Science;Sports;
+StartupWMClass=$WM_CLASS
+Terminal=false
+X-AppImage-Version=$tag
+EOF
+    if command -v desktop-file-validate >/dev/null 2>&1; then
+        desktop-file-validate "$DESKTOP_FILE"
+    fi
+    update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+}
+
+cmd_install() {
+    local tag="" from="" force=0
+    while (( $# )); do
+        case "$1" in
+            --from) from="${2:-}"; shift 2 ;;
+            --version) tag="${2:-}"; shift 2 ;;
+            --force) force=1; shift ;;
+            *) die "opzione sconosciuta: $1" ;;
+        esac
+    done
+    have_fuse2 || die "manca FUSE 2, necessario alle AppImage. Installalo con: sudo dnf install fuse-libs"
+
+    local info rtag url size sha
+    info="$(release_info "$tag")" || die "impossibile leggere le release di GoldenCheetah da GitHub"
+    read -r rtag url size sha <<< "$info"
+
+    if [[ -z "$from" && $force == 0 && -x "$APP_FILE" && "$(installed_version)" == "$rtag" ]]; then
+        msg "GoldenCheetah $rtag è già installato."
+        return 0
+    fi
+
+    mkdir -p "$APP_DIR"
+    local part="$APP_FILE.part"
+    if [[ -n "$from" ]]; then
+        [[ -f "$from" ]] || die "file non trovato: $from"
+        msg "Uso il file già scaricato: $from"
+        cp "$from" "$part"
+    else
+        msg "Scarico GoldenCheetah $rtag ($(( size / 1024 / 1024 )) MB) da GitHub..."
+        curl -fL --retry 3 --progress-bar -o "$part" "$url"
+    fi
+
+    # Verifica: deve essere esattamente il file pubblicato dagli sviluppatori
+    if [[ -n "$sha" ]]; then
+        if [[ "$(sha256sum "$part" | cut -d' ' -f1)" != "$sha" ]]; then
+            rm -f "$part"
+            die "il file non corrisponde all'AppImage ufficiale $rtag (sha256 diverso)"
+        fi
+    elif [[ "$(stat -c %s "$part")" != "$size" ]]; then
+        rm -f "$part"
+        die "dimensione del file diversa da quella pubblicata ($size byte)"
+    fi
+
+    chmod 0755 "$part"
+    mv -f "$part" "$APP_FILE"
+    install_icon
+    write_desktop "$rtag"
+    msg "GoldenCheetah $rtag installato in $APP_FILE e aggiunto al menu delle applicazioni."
+    if [[ -n "$from" && "$(readlink -f "$from")" != "$(readlink -f "$APP_FILE")" ]]; then
+        if ask "Eliminare il file originale $from, ora che è stato copiato?"; then
+            rm -f "$from"
+        fi
+    fi
+    warn_rpm
+}
+
+cmd_update() {
+    local info rtag
+    info="$(release_info)" || die "impossibile leggere le release di GoldenCheetah da GitHub"
+    rtag="${info%% *}"
+    if [[ "$(installed_version)" == "$rtag" ]]; then
+        msg "GoldenCheetah è già aggiornato ($rtag)."
+    else
+        msg "Nuova versione disponibile: $rtag (installata: $(installed_version || true))"
+        cmd_install
+    fi
+}
+
+cmd_status() {
+    local latest
+    latest="$(release_info 2>/dev/null | cut -d' ' -f1 || true)"
+    msg "installata: $(installed_version | grep . || echo nessuna)"
+    msg "ultima:     ${latest:-sconosciuta (GitHub non raggiungibile)}"
+    msg "AppImage:   $APP_FILE ($([[ -x "$APP_FILE" ]] && echo presente || echo assente))"
+    msg "menu:       $DESKTOP_FILE ($([[ -f "$DESKTOP_FILE" ]] && echo presente || echo assente))"
+    msg "FUSE 2:     $(have_fuse2 && echo ok || echo "mancante: sudo dnf install fuse-libs")"
+    warn_rpm
+}
+
+cmd_uninstall() {
+    rm -f "$APP_FILE" "$APP_FILE.part" "$ICON_FILE"
+    if [[ -f "$DESKTOP_FILE" ]]; then
+        rm -f "$DESKTOP_FILE"
+        update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    fi
+    rmdir "$APP_DIR" 2>/dev/null || true
+
+    local self
+    self="$(readlink -f "$0")"
+    if [[ "$self" == "$HOME/.local/bin/gc-appimage" ]]; then
+        rm -f "$self"
+        msg "Rimosso $self."
+    fi
+    msg "GoldenCheetah disinstallato."
+    msg "I tuoi dati (atleti, attività, collegamento a Strava) sono in ~/.goldencheetah e non sono stati toccati."
+}
+
+usage() {
+    cat <<EOF
+gc-appimage $VERSION - GoldenCheetah ufficiale (AppImage) su Fedora, con Strava funzionante
+
+Uso: gc-appimage <comando> [opzioni]
+
+Comandi:
+  install [--from FILE] [--version TAG] [--force]
+              scarica, verifica e installa l'AppImage con il collegamento nel menu
+              (--from usa un'AppImage già scaricata, verificandola)
+  update      installa la nuova versione stabile, se c'è
+  status      mostra versione installata, ultima disponibile e requisiti
+  uninstall   rimuove AppImage, collegamento e icona (i dati in ~/.goldencheetah restano)
+
+Variabili: GC_DIR (predefinito: ~/Applications)
+EOF
+}
+
+case "${1:-}" in
+    install) shift; cmd_install "$@" ;;
+    update) cmd_update ;;
+    status) cmd_status ;;
+    uninstall) cmd_uninstall ;;
+    -h|--help|help|"") usage ;;
+    --version) msg "$VERSION" ;;
+    *) usage >&2; exit 2 ;;
+esac
