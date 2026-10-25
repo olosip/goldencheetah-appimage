@@ -1,103 +1,110 @@
-# goldencheetah-appimage
+# goldencheetah-fedora-appimage
 
-GoldenCheetah ufficiale (AppImage) su Fedora, **con il collegamento a Strava funzionante**,
-il collegamento nel menu di GNOME e l'icona giusta anche nella dash.
+The official GoldenCheetah AppImage on Fedora, **with a working Strava connection**, a GNOME menu
+entry and the right icon in the dash too.
 
-## Il problema
+## The problem
 
-Con il pacchetto Fedora (`sudo dnf install GoldenCheetah`, versione 3.8 su Fedora 44), collegando
-Strava dalla configurazione degli account cloud compare l'errore:
+With the Fedora package (`sudo dnf install GoldenCheetah`, version 3.8 on Fedora 44), linking
+Strava from the cloud accounts settings fails with:
 
-> L'host richiede autenticazione (204)
+> Host requires authentication (204)
 
-Non dipende dal vostro account. GoldenCheetah, per parlare con Strava, ha bisogno di una chiave
-segreta (*client secret*) che va inserita **al momento della compilazione**. Il pacchetto Fedora è
-compilato senza: dentro il programma c'è ancora il segnaposto.
+It's not your account. To talk to Strava, GoldenCheetah needs a secret key (*client secret*) that
+is injected **at build time**. The Fedora package is built without it, so the binary still contains
+the placeholder:
 
 ```bash
 strings /usr/bin/GoldenCheetah | grep __GC_STRAVA
 # &client_secret=__GC_STRAVA_CLIENT_SECRET__
 ```
 
-GoldenCheetah manda a Strava una chiave fasulla e Strava la rifiuta. Riprovare non serve.
+GoldenCheetah sends Strava a fake key and Strava rejects it. Retrying won't help.
 
-## La soluzione
+## The fix
 
-L'**AppImage ufficiale** pubblicata dagli sviluppatori
-([release su GitHub](https://github.com/GoldenCheetah/GoldenCheetah/releases)) contiene la chiave
-giusta, e con lei Strava funziona. Usa la stessa cartella dati `~/.goldencheetah` del pacchetto
-Fedora, quindi atleti e attività restano.
+The **official AppImage** published by the developers
+([GitHub releases](https://github.com/GoldenCheetah/GoldenCheetah/releases)) includes the real
+key, and Strava works with it. It uses the same `~/.goldencheetah` data folder as the Fedora
+package, so your athletes and activities are kept.
 
-Installarla a mano lascia però qualche spigolo: niente voce nel menu e, anche dopo averla creata,
-nella dash compare un rombo blu al posto del ghepardo. GNOME riconosce le finestre dal loro
-`WM_CLASS`, e quello dell'AppImage è **il nome del file** (es. `GoldenCheetah_v3.8_x64.AppImage`),
-che cambia a ogni versione.
+Installing it by hand has a few rough edges, though: no menu entry and, even after creating one, a
+generic blue icon in the dash instead of the cheetah. GNOME matches windows by their `WM_CLASS`,
+and the AppImage's one is **the file name** (e.g. `GoldenCheetah_v3.8_x64.AppImage`), which changes
+with every version.
 
-`gc-appimage` sistema tutto:
+`gc-fedora-appimage` takes care of all of it:
 
-- scarica l'ultima AppImage stabile e ne **verifica lo sha256** con quello pubblicato su GitHub;
-- la salva sempre come `~/Applications/GoldenCheetah.AppImage`, così il `WM_CLASS` non cambia e
-  l'icona nella dash resta giusta anche dopo gli aggiornamenti;
-- estrae l'icona originale dall'AppImage e crea il collegamento nel menu;
-- si aggiorna con un comando e si disinstalla senza lasciare residui.
+- downloads the latest stable AppImage and **verifies its sha256** against the one published on
+  GitHub;
+- always saves it as `~/Applications/GoldenCheetah.AppImage`, so the `WM_CLASS` never changes and
+  the dash icon stays right across updates;
+- extracts the original icon from the AppImage and creates the menu entry;
+- updates with one command and uninstalls without leaving anything behind.
 
-## Installazione
+## Installation
 
 ```bash
-sudo dnf install fuse-libs            # FUSE 2, richiesto dalle AppImage
-sudo dnf remove GoldenCheetah         # facoltativo: il pacchetto Fedora senza Strava
-git clone https://github.com/olosip/goldencheetah-appimage.git
-cd goldencheetah-appimage
+sudo dnf install fuse-libs            # FUSE 2, required by AppImages
+sudo dnf remove GoldenCheetah         # optional: the Fedora package without Strava
+git clone https://github.com/olosip/goldencheetah-fedora-appimage.git
+cd goldencheetah-fedora-appimage
 ./install.sh
-gc-appimage install
+gc-fedora-appimage install
 ```
 
-Se avete già scaricato l'AppImage, evitate di riscaricarla (viene comunque verificata):
+If you already downloaded the AppImage, skip the download (it is verified anyway):
 
 ```bash
-gc-appimage install --from ~/Scaricati/GoldenCheetah_v3.8_x64.AppImage
+gc-fedora-appimage install --from ~/Downloads/GoldenCheetah_v3.8_x64.AppImage
 ```
 
-Poi aprite GoldenCheetah dal menu e rifate il collegamento a Strava.
+Then open GoldenCheetah from the menu and link Strava again.
 
-## Comandi
+## Commands
 
-| Comando | Cosa fa |
+| Command | What it does |
 |---|---|
-| `gc-appimage install` | scarica, verifica e installa l'ultima versione stabile |
-| `gc-appimage install --from FILE` | usa un'AppImage già scaricata (verificata con lo sha256) |
-| `gc-appimage install --version TAG` | installa una versione precisa, es. `v3.8` |
-| `gc-appimage update` | installa la nuova versione stabile, se c'è |
-| `gc-appimage status` | versione installata, ultima disponibile, requisiti |
-| `gc-appimage uninstall` | rimuove AppImage, collegamento e icona |
+| `gc-fedora-appimage install` | downloads, verifies and installs the latest stable version |
+| `gc-fedora-appimage install --from FILE` | uses an AppImage you already downloaded (sha256-verified) |
+| `gc-fedora-appimage install --version TAG` | installs a specific version, e.g. `v3.8` |
+| `gc-fedora-appimage update` | installs the new stable version, if there is one |
+| `gc-fedora-appimage status` | installed version, latest available, requirements |
+| `gc-fedora-appimage uninstall` | removes the AppImage, menu entry and icon |
 
-La cartella dell'AppImage si cambia con `GC_DIR` (predefinita: `~/Applications`).
+The AppImage folder can be changed with `GC_DIR` (default: `~/Applications`). The tool's messages
+are in Italian for now.
 
-## Disinstallazione senza residui
+## Clean uninstall
 
 ```bash
-gc-appimage uninstall
+gc-fedora-appimage uninstall
 ```
 
-Rimuove AppImage, collegamento, icona, la cartella `~/Applications` se resta vuota e lo script
-stesso. **I dati in `~/.goldencheetah` non vengono toccati**: se volete eliminarli, fatelo a mano.
+Removes the AppImage, menu entry, icon, `~/Applications` if left empty, and the script itself.
+**Your data in `~/.goldencheetah` is not touched**: delete it by hand if you want to.
 
-## Note
+## Upgrading from gc-appimage
 
-- Nel terminale può comparire `Could not find the Qt platform plugin "wayland"`: l'AppImage usa
-  XWayland, funziona normalmente.
-- Al primo avvio la 3.8 chiede se scaricare le icone degli sport: è indipendente da Strava.
+Up to version 0.1 the script was called `gc-appimage`. Running `./install.sh` from this version
+removes the old script; the AppImage and menu entry stay as they are.
 
-## Test
+## Notes
+
+- The terminal may show `Could not find the Qt platform plugin "wayland"`: the AppImage runs under
+  XWayland and works normally.
+- On first launch 3.8 asks whether to download the sport icons: it's unrelated to Strava.
+
+## Tests
 
 ```bash
 bash tests/run.sh
 ```
 
-I test non usano la rete: GitHub e l'AppImage sono simulati in una home temporanea. Verificano
-installazione, aggiornamento, rifiuto di un file con sha256 sbagliato e che dopo `uninstall` la
-home sia identica a prima, con i dati di GoldenCheetah intatti.
+The tests don't use the network: GitHub and the AppImage are simulated in a temporary home. They
+check installation, update, rejection of a file with the wrong sha256, and that after `uninstall`
+the home is exactly as before, with GoldenCheetah's data intact.
 
-## Licenza
+## License
 
 [MIT](LICENSE)

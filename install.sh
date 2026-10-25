@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Installa gc-appimage in ~/.local/bin (nessun permesso di root richiesto).
+# Installa gc-fedora-appimage in ~/.local/bin (nessun permesso di root richiesto).
 set -euo pipefail
 
-src="$(dirname "$(readlink -f "$0")")/gc-appimage"
-dest="$HOME/.local/bin/gc-appimage"
+src="$(dirname "$(readlink -f "$0")")/gc-fedora-appimage"
+dest="$HOME/.local/bin/gc-fedora-appimage"
 
 mkdir -p "$(dirname "$dest")"
 install -m 0755 "$src" "$dest"
 echo "Installato in $dest"
-echo "Poi esegui: gc-appimage install"
+
+# Fino alla 0.1 lo script si chiamava gc-appimage
+if [[ -f "$HOME/.local/bin/gc-appimage" ]]; then
+    rm -f "$HOME/.local/bin/gc-appimage"
+    echo "Rimosso il vecchio script $HOME/.local/bin/gc-appimage"
+fi
+echo "Poi esegui: gc-fedora-appimage install"

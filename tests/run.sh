@@ -61,14 +61,16 @@ export PATH="$stubs:$PATH"
 
 snapshot() { (cd "$HOME" && find . | sort); }
 fail() { echo "FALLITO: $*" >&2; exit 1; }
-gc="$HOME/.local/bin/gc-appimage"
+gc="$HOME/.local/bin/gc-fedora-appimage"
 app="$HOME/Applications/GoldenCheetah.AppImage"
 desk="$HOME/.local/share/applications/goldencheetah.desktop"
 icon="$HOME/.local/share/icons/goldencheetah.png"
 
 before="$(snapshot)"
+printf '#!/bin/sh\n' > "$HOME/.local/bin/gc-appimage"
 bash "$root/install.sh" >/dev/null
 [[ -x "$gc" ]] || fail "script non installato"
+[[ -e "$HOME/.local/bin/gc-appimage" ]] && fail "vecchio script gc-appimage non rimosso"
 
 # Installazione dell'ultima versione
 publish v3.8

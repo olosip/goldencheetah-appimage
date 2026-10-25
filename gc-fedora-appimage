@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# gc-appimage: installa e aggiorna l'AppImage ufficiale di GoldenCheetah su Fedora,
+# gc-fedora-appimage: installa e aggiorna l'AppImage ufficiale di GoldenCheetah su Fedora,
 # con il collegamento nel menu di GNOME e l'icona giusta anche nella dash.
 # Il pacchetto GoldenCheetah di Fedora è compilato senza la chiave Strava: l'AppImage ufficiale ce l'ha.
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 REPO_API="https://api.github.com/repos/GoldenCheetah/GoldenCheetah/releases"
 APP_DIR="${GC_DIR:-$HOME/Applications}"
 # Nome fisso: GNOME riconosce la finestra dal nome del file (WM_CLASS), così l'icona
@@ -190,7 +190,7 @@ cmd_uninstall() {
 
     local self
     self="$(readlink -f "$0")"
-    if [[ "$self" == "$HOME/.local/bin/gc-appimage" ]]; then
+    if [[ "$self" == "$HOME/.local/bin/gc-fedora-appimage" ]]; then
         rm -f "$self"
         msg "Rimosso $self."
     fi
@@ -200,9 +200,9 @@ cmd_uninstall() {
 
 usage() {
     cat <<EOF
-gc-appimage $VERSION - GoldenCheetah ufficiale (AppImage) su Fedora, con Strava funzionante
+gc-fedora-appimage $VERSION - GoldenCheetah ufficiale (AppImage) su Fedora, con Strava funzionante
 
-Uso: gc-appimage <comando> [opzioni]
+Uso: gc-fedora-appimage <comando> [opzioni]
 
 Comandi:
   install [--from FILE] [--version TAG] [--force]
